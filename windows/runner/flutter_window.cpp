@@ -46,6 +46,17 @@ bool FlutterWindow::OnCreate() {
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
+    // Restore a launcher-minimized window after the first Flutter frame.
+    ::ShowWindow(GetHandle(), SW_RESTORE);
+    if (!::SetForegroundWindow(GetHandle())) {
+      // Respect Windows focus restrictions instead of forcing an always-on-top window.
+      FLASHWINFO attention{};
+      attention.cbSize = sizeof(attention);
+      attention.hwnd = GetHandle();
+      attention.dwFlags = FLASHW_TRAY;
+      attention.uCount = 3;
+      ::FlashWindowEx(&attention);
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is

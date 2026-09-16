@@ -3,6 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:camera_platform_interface/camera_platform_interface.dart';
+import 'features/camera/data/windows_camera_repository.dart';
+import 'features/camera/presentation/camera_cubit.dart';
+import 'features/camera/presentation/camera_page.dart';
 import 'features/probe/data/local_probe_repository.dart';
 import 'features/probe/presentation/probe_cubit.dart';
 import 'features/probe/presentation/probe_page.dart';
@@ -33,6 +37,26 @@ Future<void> main(List<String> args) async {
         length: 2,
         child: Scaffold(
           appBar: AppBar(
+            actions: [
+              Builder(
+                builder: (context) => TextButton.icon(
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: const Text('Camera DLL test'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => BlocProvider(
+                        create: (_) => CameraCubit(
+                          WindowsCameraRepository(CameraPlatform.instance),
+                        ),
+                        child: CameraPage(
+                          previewBuilder: CameraPlatform.instance.buildPreview,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             title: const Text('Updater Lab'),
             bottom: const TabBar(
               tabs: [

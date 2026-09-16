@@ -1,5 +1,22 @@
 # Desktop Updater Lab — macOS first
 
+## Windows 1.0.7 camera DLL experiment
+
+Keep the installed 1.0.6 and its saved note. Update without reinstalling, then:
+- Confirm the window restores after restart; report if Windows still leaves it behind another app.
+- Open **Camera DLL test**, then **Open camera**. Nothing activates automatically.
+- Expect a live local webcam preview. Audio is disabled; no capture, recording or upload is implemented.
+- Stop the camera, reopen it, then leave the screen; check the camera indicator turns off.
+- Check **Native & saved data → Load saved note** to verify the 1.0.6 note survived.
+
+This adds Flutter's camera_windows plugin, compiled as camera_windows_plugin.dll.
+CI verifies this DLL exists and its bytes match the copy inside the full update
+package. Hardware preview still requires a real Windows device; CI cannot prove it.
+Windows camera privacy policy, another app holding the webcam, or missing Media
+Foundation on Windows N editions can prevent preview independently of the updater.
+The native window now restores and requests foreground activation; if Windows
+denies focus, it flashes the taskbar button rather than forcing always-on-top.
+
 ## Windows 1.0.6 native and persistence experiment
 
 Update the installed Windows app to 1.0.6 (do not reinstall). Open the new

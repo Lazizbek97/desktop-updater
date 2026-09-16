@@ -36,6 +36,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_bloc: 9.1.1
   shared_preferences: 2.5.5
+  camera_windows: 0.2.6+5
+  camera_platform_interface: ^2.11.0
   velopack_flutter:
     path: packages/velopack_flutter
 

@@ -65,6 +65,17 @@ jobs:
         run: vpk pack --packId UpdaterLab --packVersion "$VERSION" --packDir build/windows/x64/runner/Release --mainExe updater_lab.exe --channel win-x64 --runtime win-x64 --framework vcredist143-x64
       - name: Verify packages
         run: |
+          test -s build/windows/x64/runner/Release/camera_windows_plugin.dll
+          python - <<'PY'
+          import os, zipfile
+          from pathlib import Path
+          version = os.environ['VERSION']
+          with zipfile.ZipFile(f'Releases/UpdaterLab-{version}-win-x64-full.nupkg') as package:
+              matches = [n for n in package.namelist() if n.endswith('/camera_windows_plugin.dll')]
+              assert len(matches) == 1, 'Camera DLL missing from update package'
+              assert package.read(matches[0]) == Path('build/windows/x64/runner/Release/camera_windows_plugin.dll').read_bytes()
+              print('Verified camera_windows_plugin.dll in Velopack update payload')
+          PY
           test -s "Releases/UpdaterLab-$VERSION-win-x64-full.nupkg"
           test -s "Releases/UpdaterLab-$VERSION-win-x64-delta.nupkg"
           test -s Releases/UpdaterLab-win-x64-Setup.exe
