@@ -1,0 +1,81 @@
+name: Release Windows updater lab
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Increasing Windows test version'
+        required: true
+        default: '1.0.4'
+permissions:
+  contents: read
+concurrency:
+  group: updater-releases
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and download channel baselines
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PUBLIC
+          export LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          python - <<'PY'
+          import os
+          parse = lambda v: tuple(map(int, v.removeprefix('v').split('.')))
+          assert parse(os.environ['VERSION']) > parse(os.environ['LATEST'])
+          PY
+          mkdir -p Releases
+          # Keep the existing macOS channel usable in the newest GitHub release.
+          gh release download "$LATEST" --repo "$GITHUB_REPOSITORY" --pattern '*osx-arm64*' --dir Releases
+          # Find the newest release containing a Windows feed (not necessarily latest).
+          BASE=''
+          for TAG in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 --json tagName,isDraft,isPrerelease --jq '.[] | select(.isDraft == false and .isPrerelease == false) | .tagName'); do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx 'releases.win-x64.json'; then
+              BASE="$TAG"; break
+            fi
+          done
+          test -n "$BASE"
+          gh release download "$BASE" --repo "$GITHUB_REPOSITORY" --pattern '*-win-x64-full.nupkg' --pattern 'releases.win-x64.json' --dir Releases
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: flutter test
+      - run: dotnet tool install -g vpk --version 1.2.0
+      - run: flutter build windows --release --build-name="$VERSION" --dart-define=APP_VERSION="$VERSION"
+      - name: Package per-user app with VC++ prerequisite
+        run: vpk pack --packId UpdaterLab --packVersion "$VERSION" --packDir build/windows/x64/runner/Release --mainExe updater_lab.exe --channel win-x64 --runtime win-x64 --framework vcredist143-x64
+      - name: Verify packages
+        run: |
+          test -s "Releases/UpdaterLab-$VERSION-win-x64-full.nupkg"
+          test -s "Releases/UpdaterLab-$VERSION-win-x64-delta.nupkg"
+          test -s Releases/UpdaterLab-win-x64-Setup.exe
+          test -s Releases/releases.win-x64.json
+          test -s Releases/releases.osx-arm64.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ inputs.version }}
+          path: Releases/*
+          retention-days: 3
+      - name: Publish complete release
+        run: |
+          gh release create "v$VERSION" Releases/* --draft --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Updater Lab $VERSION (Windows x64 test)" --notes 'Windows test: install UpdaterLab-win-x64-Setup.exe once. Unsigned: SmartScreen may warn; missing VC++ runtime may require administrator approval. Uses patched bridge and automatic downloads. Restart shutdown issue remains under investigation; report crashes. Existing macOS assets are carried forward unchanged, not a new macOS version. Not for BILLZ production.'
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest

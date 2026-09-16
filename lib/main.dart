@@ -58,7 +58,7 @@ class LabPage extends StatelessWidget {
                     SizedBox(width: 16),
                     Expanded(
                       child: Text(
-                        'A fresh look, delivered by an update\nVisual checkpoint for release 1.0.3',
+                        'A fresh look, delivered by an update\nVisual checkpoint for release ${String.fromEnvironment('APP_VERSION', defaultValue: 'development')}',
                         style: TextStyle(color: Colors.white, fontSize: 20),
                       ),
                     ),

@@ -12,12 +12,14 @@ void main() {
       // manager fails before any GitHub request; this exercises the real FFI error.
       await velo.VelopackRustLib.init(
         externalLibrary: ExternalLibrary.open(
-          '${Directory.current.path}/build/native_assets/macos/libvelopack_flutter.dylib',
+          Platform.isWindows
+              ? '${Directory.current.path}/build/native_assets/windows/velopack_flutter.dll'
+              : '${Directory.current.path}/build/native_assets/macos/libvelopack_flutter.dylib',
         ),
       );
       await native.initVelopack(
         url: 'https://github.com/Lazizbek97/desktop-updater',
-        channel: 'osx-arm64',
+        channel: Platform.isWindows ? 'win-x64' : 'osx-arm64',
         allowDowngrade: false,
       );
       await expectLater(
