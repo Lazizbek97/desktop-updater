@@ -30,6 +30,7 @@ jobs:
           test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PUBLIC
           LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
           export LATEST
+          echo "BASELINE_TAG=$LATEST" >> "$GITHUB_ENV"
           python3 - <<'PY'
           import os
           parse = lambda v: tuple(map(int, v.removeprefix('v').split('.')))
@@ -38,6 +39,10 @@ jobs:
           if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo 'Version already exists. Choose a new version.'; exit 1
           fi
+      - name: Fetch authenticated previous baseline before compiling
+        run: |
+          mkdir -p Releases
+          gh release download "$BASELINE_TAG" --repo "$GITHUB_REPOSITORY" --pattern '*-osx-arm64-full.nupkg' --pattern 'releases.osx-arm64.json' --dir Releases
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.8'
@@ -52,8 +57,6 @@ jobs:
       - run: dotnet tool install -g vpk --version 1.2.0
       - name: Build Flutter release
         run: flutter build macos --release --build-name="$VERSION" --dart-define=APP_VERSION="$VERSION"
-      - name: Fetch previous full package for delta generation
-        run: vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --channel osx-arm64
       - name: Package unsigned laboratory build
         run: vpk pack --packId UpdaterLab --packVersion "$VERSION" --packDir build/macos/Build/Products/Release/updater_lab.app --mainExe updater_lab --channel osx-arm64 --runtime osx-arm64
       - name: Verify release payload
