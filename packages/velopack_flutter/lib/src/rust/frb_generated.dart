@@ -127,8 +127,6 @@ class VelopackRustLibApiImpl extends VelopackRustLibApiImplPlatform
     final progressSink = RustStreamSink<int>();
     final controller = StreamController<int>();
     final streamDone = Completer<void>();
-    final subscription = progressSink.stream.listen(controller.add,
-        onError: controller.addError, onDone: streamDone.complete);
     final task = handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
@@ -146,6 +144,8 @@ class VelopackRustLibApiImpl extends VelopackRustLibApiImplPlatform
       argValues: [progressSink, channel, allowDowngrade],
       apiImpl: this,
     ));
+    final subscription = progressSink.stream.listen(controller.add,
+        onError: controller.addError, onDone: streamDone.complete);
     unawaited(Future.wait<dynamic>([task, streamDone.future], eagerError: true)
         .then<void>((_) {}, onError: (Object error, StackTrace stack) {
       controller.addError(error, stack);

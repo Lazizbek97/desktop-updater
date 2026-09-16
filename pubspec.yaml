@@ -39,6 +39,7 @@ dependencies:
     path: packages/velopack_flutter
 
 dev_dependencies:
+  flutter_rust_bridge: 2.11.1
   flutter_test:
     sdk: flutter
 
