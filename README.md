@@ -1,32 +1,73 @@
-# Desktop Updater Lab
+# Desktop Updater Lab — macOS first
 
-Isolated Flutter 3.38.6 application testing stock `velopack_flutter` 0.3.2 and vpk 1.2.0.
-No BILLZ source, credentials, configuration or customer data belongs in this repository.
+Isolated Flutter 3.44.8 app with a vendored, patched velopack_flutter 0.3.2 and
+Velopack core/CLI 1.2.0. No BILLZ source, credentials or customer data belongs here.
+Windows is deferred until macOS passes. Apple Silicon only in this phase.
 
-## Run the experiment
+## Install and test
 
-1. Run **Build updater lab** in GitHub Actions with version `1.0.0`.
-2. Install the Windows Setup.exe or macOS package from that release. Do not run the bare Flutter build output: Velopack requires its packaged layout.
-3. Launch it and confirm the displayed build is 1.0.0. Click Check: no update expected.
-4. Keep that installation. Run the workflow with `1.0.1`.
-5. In 1.0.0 click Check, then Download. Observe timestamps and whether progress arrives continuously or all at once.
-6. Click Apply & restart. Confirm the reopened app shows 1.0.1. Check again: no update expected.
-7. Repeat with 1.0.2, including restarting after download with the network disconnected. Record failures rather than assuming a completed stream means successful download.
+1. In GitHub Actions run **Release macOS updater lab**, version **1.0.1**.
+2. From that release download `UpdaterLab-osx-arm64-Setup.pkg`, install, and open
+   the installed app. Do not launch the bare Flutter build or a `.nupkg`.
+3. Confirm Build 1.0.1. Leave it installed. Publish **1.0.2** with the same workflow.
+4. Click Check to avoid the four-hour timer, or relaunch to trigger startup checking.
+   Download happens automatically. App must remain open without forcing a restart.
+5. When ready, click Apply & restart. Confirm Build 1.0.2 and no new update.
+6. Repeat with 1.0.3: disconnect internet AFTER download, then Apply & restart.
+7. Repeat closing normally after download and reopening; verify cached startup update.
 
-The app checks on launch and on demand. Download is intentionally manual for reproducible timing. GitHub's `/releases/latest/download` redirects to the current published assets; no app token or external server is required. Both platforms must finish before a release is published. Never overwrite published versions.
+Original 1.0.0 is the old manual-flow experiment. Use 1.0.1 as the baseline for
+automatic behavior. Do not publish 1.0.2 until the baseline is installed.
 
-## Scope and limits
+These lab installers are unsigned/unnotarized. Gatekeeper may block them; only
+approve this known test app through Privacy & Security. Never disable Gatekeeper
+globally. Smooth public installation requires Developer ID signing/notarization.
+The CLI creates a PKG installer, not a DMG. A DMG is not needed for auto-updates.
 
-- Windows x64: packages the complete release directory, including the Rust native library and Flutter assets. Velopack bootstraps `vcredist143-x64`; test on a clean Windows VM without Visual Studio. Unlike BILLZ's bundled VC++ installer, bootstrap may need internet and elevation.
-- macOS ARM64: non-sandboxed laboratory build; unsigned and not notarized. Gatekeeper may refuse downloaded builds. Production requires Developer ID signing/notarization and a separate signed test; do not disable machine-wide security settings.
-- No automatic migration of an existing BILLZ installation is performed.
-- This app does not exercise BILLZ's printers, fiscal devices, Sentry process, databases, single-instance mutex or secure storage. Passing this experiment proves only the basic updater path.
-- Stock wrapper has known source-level concerns: progress forwarding starts after download, generated stream code discards a Future that can fail, apply rechecks the remote feed, and startup may automatically apply cached updates. This lab intentionally preserves that behavior so it can be observed before deciding whether to maintain a patched bridge.
-- Test network loss, missing assets, insufficient disk, process termination during download, skipped versions, antivirus locks, and successful retry. Save updater logs with OS/version and the exact release pair.
-- A reverted app binary does not reverse database migrations. Production rollback needs separate validation.
+## Release pipeline and cost
+
+Manual dispatch is intentional: no expensive builds on every commit. Hotfixes and
+regular releases use exactly the same workflow with a higher three-part version.
+The workflow builds/tests on standard macos-14, downloads the previous full release,
+generates full/delta packages and feed, checks artifacts, uploads a draft, then
+publishes it. Failed jobs do not replace the latest release. If upload fails after
+draft creation, inspect that draft before choosing a new version; do not overwrite
+published versions. Timeout: 35 minutes; intermediate artifacts retained 3 days.
+
+GitHub standard hosted runners are free for public repositories:
+https://docs.github.com/en/billing/concepts/product-billing/github-actions
+This workflow refuses private repositories to avoid silently introducing private
+runner charges. Larger paid runners are not used. Release assets are public;
+never upload secrets. No GitHub token is embedded in the app.
+
+Keep old release assets for skipped-version deltas. GithubSource searches recent
+releases; if a delta chain is unavailable it can download a full package. A first
+macOS update may be full. Patching is an optimization, not a guaranteed download size.
+Unauthenticated GitHub API limits are shared per public IP. Four-hour polling suits
+this small lab; GitHub API-based polling needs reevaluation for a large BILLZ fleet.
+
+## Acceptance checklist (not yet passed)
+
+- [ ] Fresh PKG installation launches with correct version and no missing UpdateMac.
+- [ ] 1.0.1 → 1.0.2 automatic download and explicit restart, without installer wizard.
+- [ ] Downloaded update applies offline; cached update applies on next startup.
+- [ ] Offline startup remains usable; reconnect and Check retries successfully.
+- [ ] Quit/kill during download, relaunch, retry; no partial update applied.
+- [ ] Skip a release; full fallback or complete delta chain succeeds.
+- [ ] Compare full/delta sizes; record actual network use, not just candidate count.
+- [ ] Insufficient disk and corrupt/missing assets in a separate disposable test feed.
+- [ ] Signed/notarized install and update on a clean Mac, including non-admin user.
+- [ ] Native dependencies, persistent data and migrations validated before BILLZ integration.
+
+Record OS, architecture, old/new version, app/update logs and outcome. Do not
+corrupt public release assets to simulate failure. Do not fill the host disk;
+use a disposable VM/volume. This app contains no BILLZ database, printers, fiscal
+devices, secure storage or mutex, so these checks cannot prove BILLZ compatibility.
 
 ## Development
 
-Install Flutter 3.38.6 and Rust, then `flutter pub get`, `flutter analyze`, `flutter test`.
-Use `flutter run -d macos` for UI only; update operations will report not-installed errors.
-Release workflow runs analysis/tests, downloads the prior release to generate deltas, packages both platforms, and publishes assets to GitHub Releases. The first macOS update may be full.
+Install Flutter 3.44.8 and Rust via rustup (toolchain 1.90.0).
+Run `flutter pub get`, `flutter analyze`, `flutter test`.
+`flutter run -d macos` is a UI preview with update controls disabled.
+Actual updates require a Velopack-packaged installation.
+See `packages/velopack_flutter/PATCHES.md` for the maintained bridge changes.

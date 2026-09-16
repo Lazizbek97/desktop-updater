@@ -1,84 +1,78 @@
-name: Build updater lab
+name: Release macOS updater lab
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Increasing three-part version (first: 1.0.0, next: 1.0.1)'
+        description: 'New increasing version. Never reuse a version.'
         required: true
-        default: '1.0.0'
+        default: '1.0.1'
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: updater-releases
   cancel-in-progress: false
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            platform: windows
-            channel: win-x64
-          - os: macos-14
-            platform: macos
-            channel: osx-arm64
-    runs-on: ${{ matrix.os }}
+  release:
+    runs-on: macos-14
+    timeout-minutes: 35
+    permissions:
+      contents: write
     env:
       VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate version and public repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          test "$(gh repo view "$GITHUB_REPOSITORY" --json visibility --jq .visibility)" = PUBLIC
+          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          export LATEST
+          python3 - <<'PY'
+          import os
+          parse = lambda v: tuple(map(int, v.removeprefix('v').split('.')))
+          assert parse(os.environ['VERSION']) > parse(os.environ['LATEST']), 'Version must increase'
+          PY
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Version already exists. Choose a new version.'; exit 1
+          fi
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.6'
+          flutter-version: '3.44.8'
           cache: true
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.90.0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Validate version
-        shell: bash
-        run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
       - run: flutter analyze
       - run: flutter test
       - run: dotnet tool install -g vpk --version 1.2.0
-      - name: Build Flutter
-        run: flutter build ${{ matrix.platform }} --release --build-name=${{ inputs.version }} --dart-define=APP_VERSION=${{ inputs.version }}
-      - name: Download previous baseline
-        shell: bash
+      - name: Build Flutter release
+        run: flutter build macos --release --build-name="$VERSION" --dart-define=APP_VERSION="$VERSION"
+      - name: Fetch previous full package for delta generation
+        run: vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --channel osx-arm64
+      - name: Package unsigned laboratory build
+        run: vpk pack --packId UpdaterLab --packVersion "$VERSION" --packDir build/macos/Build/Products/Release/updater_lab.app --mainExe updater_lab --channel osx-arm64 --runtime osx-arm64
+      - name: Verify release payload
         run: |
-          if gh release view --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --channel '${{ matrix.channel }}'
-          elif [[ "$VERSION" != '1.0.0' ]]; then
-            echo 'Previous release unavailable; refusing to silently skip delta baseline.'
-            exit 1
-          fi
-      - name: Package Windows including VC++ prerequisite
-        if: matrix.platform == 'windows'
-        run: vpk pack --packId UpdaterLab --packVersion ${{ inputs.version }} --packDir build/windows/x64/runner/Release --mainExe updater_lab.exe --channel win-x64 --runtime win-x64 --framework vcredist143-x64
-      - name: Package macOS laboratory build (unsigned)
-        if: matrix.platform == 'macos'
-        run: vpk pack --packId UpdaterLab --packVersion ${{ inputs.version }} --packDir build/macos/Build/Products/Release/updater_lab.app --mainExe updater_lab --channel osx-arm64 --runtime osx-arm64
+          test -s "Releases/UpdaterLab-$VERSION-osx-arm64-full.nupkg"
+          test -s "Releases/UpdaterLab-$VERSION-osx-arm64-delta.nupkg"
+          test -s Releases/UpdaterLab-osx-arm64-Setup.pkg
+          test -s Releases/releases.osx-arm64.json
+          unzip -l "Releases/UpdaterLab-$VERSION-osx-arm64-full.nupkg" | grep UpdateMac
+          shasum -a 256 Releases/* > SHA256SUMS.txt
+          mv SHA256SUMS.txt Releases/
       - uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.channel }}
+          name: macos-${{ inputs.version }}
           path: Releases/*
+          retention-days: 3
           if-no-files-found: error
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      VERSION: ${{ inputs.version }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: packages
-          merge-multiple: true
-      - name: Publish complete release
-        shell: bash
+      - name: Upload complete draft then publish
         run: |
-          gh release create "v$VERSION" packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Updater Lab $VERSION" --notes 'Laboratory build. Windows is unsigned; macOS is unsigned and not notarized. Not for production. Install 1.0.0 before publishing 1.0.1.' --latest
+          set -euo pipefail
+          gh release create "v$VERSION" Releases/* --draft --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Updater Lab $VERSION (macOS Apple Silicon)" --notes-file RELEASE_NOTES.md
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest

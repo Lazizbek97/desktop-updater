@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'features/update/data/velopack_repository.dart';
 import 'features/update/presentation/update_cubit.dart';
@@ -16,7 +17,7 @@ Future<void> main(List<String> args) async {
   Bloc.observer = ErrorObserver();
   final repository = VelopackRepository();
   try {
-    await repository.initialize();
+    if (kReleaseMode) await repository.initialize();
   } catch (error, stack) {
     debugPrint('Updater startup: $error\n$stack');
   }
@@ -24,7 +25,7 @@ Future<void> main(List<String> args) async {
     MaterialApp(
       theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
       home: BlocProvider(
-        create: (_) => UpdateCubit(repository)..check(),
+        create: (_) => UpdateCubit(repository)..start(enabled: kReleaseMode),
         child: const LabPage(),
       ),
     ),
@@ -50,22 +51,20 @@ class LabPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                'GitHub Releases • stock velopack_flutter 0.3.2\nDownload first, then restart. Failures appear below.',
+                'GitHub Releases • patched Velopack lab\nChecks on launch and every 4 hours. Downloads automatically.\nRestart only when you are ready. Debug builds are UI previews.',
               ),
               const SizedBox(height: 24),
               Wrap(
                 spacing: 12,
                 children: [
                   ElevatedButton(
-                    onPressed: cubit.busy ? null : cubit.check,
+                    onPressed: !kReleaseMode || cubit.busy ? null : cubit.check,
                     child: const Text('Check'),
                   ),
                   ElevatedButton(
-                    onPressed: cubit.busy ? null : cubit.download,
-                    child: const Text('Download'),
-                  ),
-                  ElevatedButton(
-                    onPressed: cubit.busy ? null : cubit.restart,
+                    onPressed: cubit.busy || !cubit.readyToRestart
+                        ? null
+                        : cubit.restart,
                     child: const Text('Apply & restart'),
                   ),
                 ],
