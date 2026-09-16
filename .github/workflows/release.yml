@@ -1,0 +1,84 @@
+name: Build updater lab
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Increasing three-part version (first: 1.0.0, next: 1.0.1)'
+        required: true
+        default: '1.0.0'
+permissions:
+  contents: write
+concurrency:
+  group: updater-releases
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+            channel: win-x64
+          - os: macos-14
+            platform: macos
+            channel: osx-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.6'
+          cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Validate version
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: dotnet tool install -g vpk --version 1.2.0
+      - name: Build Flutter
+        run: flutter build ${{ matrix.platform }} --release --build-name=${{ inputs.version }} --dart-define=APP_VERSION=${{ inputs.version }}
+      - name: Download previous baseline
+        shell: bash
+        run: |
+          if gh release view --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            vpk download github --repoUrl "https://github.com/$GITHUB_REPOSITORY" --channel '${{ matrix.channel }}'
+          elif [[ "$VERSION" != '1.0.0' ]]; then
+            echo 'Previous release unavailable; refusing to silently skip delta baseline.'
+            exit 1
+          fi
+      - name: Package Windows including VC++ prerequisite
+        if: matrix.platform == 'windows'
+        run: vpk pack --packId UpdaterLab --packVersion ${{ inputs.version }} --packDir build/windows/x64/runner/Release --mainExe updater_lab.exe --channel win-x64 --runtime win-x64 --framework vcredist143-x64
+      - name: Package macOS laboratory build (unsigned)
+        if: matrix.platform == 'macos'
+        run: vpk pack --packId UpdaterLab --packVersion ${{ inputs.version }} --packDir build/macos/Build/Products/Release/updater_lab.app --mainExe updater_lab --channel osx-arm64 --runtime osx-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.channel }}
+          path: Releases/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Publish complete release
+        shell: bash
+        run: |
+          gh release create "v$VERSION" packages/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Updater Lab $VERSION" --notes 'Laboratory build. Windows is unsigned; macOS is unsigned and not notarized. Not for production. Install 1.0.0 before publishing 1.0.1.' --latest
