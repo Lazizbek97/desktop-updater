@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'features/probe/data/local_probe_repository.dart';
+import 'features/probe/presentation/probe_cubit.dart';
+import 'features/probe/presentation/probe_page.dart';
 import 'features/update/data/velopack_repository.dart';
 import 'features/update/presentation/update_cubit.dart';
 
@@ -24,9 +29,37 @@ Future<void> main(List<String> args) async {
   runApp(
     MaterialApp(
       theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-      home: BlocProvider(
-        create: (_) => UpdateCubit(repository)..start(enabled: kReleaseMode),
-        child: const LabPage(),
+      home: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Updater Lab'),
+            bottom: const TabBar(
+              tabs: [
+                Tab(text: 'Updates'),
+                Tab(text: 'Native & saved data'),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            children: [
+              BlocProvider(
+                create: (_) =>
+                    UpdateCubit(repository)..start(enabled: kReleaseMode),
+                child: const LabPage(),
+              ),
+              BlocProvider(
+                create: (_) => ProbeCubit(
+                  LocalProbeRepository(
+                    SharedPreferencesAsync(),
+                    const MethodChannel('updater_lab/native_probe'),
+                  ),
+                )..load(),
+                child: const ProbePage(),
+              ),
+            ],
+          ),
+        ),
       ),
     ),
   );

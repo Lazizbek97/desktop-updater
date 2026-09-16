@@ -1,5 +1,23 @@
 # Desktop Updater Lab — macOS first
 
+## Windows 1.0.6 native and persistence experiment
+
+Update the installed Windows app to 1.0.6 (do not reinstall). Open the new
+**Native & saved data** tab and run **Run native C++ check**. Expect
+`native-probe-v1 | Windows C++ executed | Logical processors: ...`.
+This method channel was added to the Windows runner in this release, proving new
+native executable code can arrive via an update. It is not a third-party DLL test.
+
+Save a non-sensitive note such as `keep-me-106`, then quit/reopen and load it.
+SharedPreferencesAsync stores the note outside the application bundle; no startup
+code clears it. Leave it saved for the next release to test update preservation.
+1.0.5 did not have this note feature, so 1.0.5 → 1.0.6 alone cannot prove retention
+of a previously saved note. Preferences are not suitable for critical data and do
+not substitute for database migration, backup or corruption-recovery testing.
+
+Windows lab releases now exist; the original macOS-first instructions below
+describe the earlier experiment. The macOS shutdown issue remains unresolved.
+
 Isolated Flutter 3.44.8 app with a vendored, patched velopack_flutter 0.3.2 and
 Velopack core/CLI 1.2.0. No BILLZ source, credentials or customer data belongs here.
 Windows is deferred until macOS passes. Apple Silicon only in this phase.

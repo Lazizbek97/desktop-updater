@@ -1,6 +1,9 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -25,6 +28,20 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  flutter::MethodChannel<flutter::EncodableValue> probe(
+      flutter_controller_->engine()->messenger(), "updater_lab/native_probe",
+      &flutter::StandardMethodCodec::GetInstance());
+  probe.SetMethodCallHandler([](const auto& call, auto result) {
+    if (call.method_name() != "getNativeInfo") {
+      result->NotImplemented();
+      return;
+    }
+    SYSTEM_INFO info{};
+    GetNativeSystemInfo(&info);
+    result->Success(flutter::EncodableValue(
+        std::string("native-probe-v1 | Windows C++ executed | Logical processors: ") +
+        std::to_string(info.dwNumberOfProcessors)));
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
